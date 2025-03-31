@@ -1,0 +1,1131 @@
+import React, { useState, useEffect, useRef } from "react";
+
+function MusicPlayer() {
+  // Core states
+  const [songs, setSongs] = useState([]);
+  const [currentSongIndex, setCurrentSongIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [volume, setVolume] = useState(0.5);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [autoPlay, setAutoPlay] = useState(false);
+  
+  // Playlist and queue states
+  const [playlists, setPlaylists] = useState([]);
+  const [currentPlaylist, setCurrentPlaylist] = useState(null);
+  const [queue, setQueue] = useState([]);
+  const [newPlaylistName, setNewPlaylistName] = useState('');
+  const [showPlaylistSongs, setShowPlaylistSongs] = useState(null);
+
+  // Audio effects
+  const [effects, setEffects] = useState({
+    reverb: false,
+    delay: false,
+    distortion: false
+  });
+  const [equalizer, setEqualizer] = useState({
+    bass: 0,
+    mid: 0,
+    treble: 0
+  });
+
+  // Color theme
+  const colors = {
+    primary: '#6C5CE7',
+    secondary: '#00CEFF',
+    accent: '#FD79A8',
+    background: '#F8F9FA',
+    textDark: '#2D3436',
+    textLight: '#636E72',
+    cardBg: 'rgba(255, 255, 255, 0.9)'
+  };
+
+  const audioRef = useRef(new Audio());
+  const fileInputRef = useRef(null);
+
+  // Card styling
+  const cardStyle = {
+    backgroundColor: colors.cardBg,
+    padding: '24px',
+    borderRadius: '16px',
+    boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
+    marginBottom: '24px',
+    border: '1px solid rgba(255,255,255,0.3)',
+    backdropFilter: 'blur(10px)'
+  };
+
+  // Button styling
+  const buttonStyle = (active = false, color = colors.primary) => ({
+    backgroundColor: active ? color : 'rgba(255,255,255,0.8)',
+    color: active ? 'white' : colors.textDark,
+    border: 'none',
+    borderRadius: '12px',
+    padding: '12px 20px',
+    cursor: 'pointer',
+    margin: '6px',
+    transition: 'all 0.3s',
+    fontWeight: '600',
+    boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+    ':hover': {
+      transform: 'translateY(-2px)',
+      boxShadow: `0 6px 12px ${color}40`
+    }
+  });
+
+  // Load initial data
+  useEffect(() => {
+    const storedSongs = JSON.parse(localStorage.getItem("songs")) || [];
+    const storedPlaylists = JSON.parse(localStorage.getItem("playlists")) || [];
+    setSongs(storedSongs);
+    setPlaylists(storedPlaylists);
+  }, []);
+
+  // Save data
+  useEffect(() => {
+    localStorage.setItem("songs", JSON.stringify(songs));
+    localStorage.setItem("playlists", JSON.stringify(playlists));
+  }, [songs, playlists]);
+
+  // Audio setup
+  useEffect(() => {
+    const audio = audioRef.current;
+
+    const updateTime = () => setCurrentTime(audio.currentTime);
+    const updateDuration = () => setDuration(audio.duration);
+    const handleEnd = () => {
+      if (queue.length > 0) {
+        playFromQueue();
+      } else if (autoPlay || currentPlaylist !== null) {
+        handleNext();
+      } else {
+        setIsPlaying(false);
+      }
+    };
+
+    audio.addEventListener('timeupdate', updateTime);
+    audio.addEventListener('loadedmetadata', updateDuration);
+    audio.addEventListener('ended', handleEnd);
+
+    return () => {
+      audio.removeEventListener('timeupdate', updateTime);
+      audio.removeEventListener('loadedmetadata', updateDuration);
+      audio.removeEventListener('ended', handleEnd);
+    };
+  }, [queue, autoPlay, currentPlaylist]);
+
+  // Update audio when song changes
+  useEffect(() => {
+    if (songs.length === 0) return;
+    
+    const audio = audioRef.current;
+    audio.src = songs[currentSongIndex]?.url || '';
+    audio.volume = volume;
+    
+    if (isPlaying) {
+      audio.play().catch(e => console.log("Play error:", e));
+    }
+  }, [currentSongIndex, songs, isPlaying, volume]);
+
+  // Core player functions
+  const handlePlayPause = () => {
+    if (songs.length === 0) return;
+    
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      audioRef.current.play().catch(e => console.log("Play error:", e));
+      setIsPlaying(true);
+    }
+  };
+
+  const handleNext = () => {
+    if (songs.length === 0) return;
+    
+    if (currentPlaylist !== null) {
+      // Play next song in playlist
+      const playlist = playlists[currentPlaylist];
+      const currentIndexInPlaylist = playlist.songs.indexOf(currentSongIndex);
+      
+      if (currentIndexInPlaylist < playlist.songs.length - 1) {
+        setCurrentSongIndex(playlist.songs[currentIndexInPlaylist + 1]);
+      } else {
+        // End of playlist
+        setCurrentPlaylist(null);
+        setCurrentSongIndex((prev) => (prev + 1) % songs.length);
+      }
+    } else {
+      // Normal next song
+      setCurrentSongIndex((prev) => (prev + 1) % songs.length);
+    }
+  };
+
+  const handlePrevious = () => {
+    if (songs.length === 0) return;
+    
+    if (currentPlaylist !== null) {
+      // Play previous song in playlist
+      const playlist = playlists[currentPlaylist];
+      const currentIndexInPlaylist = playlist.songs.indexOf(currentSongIndex);
+      
+      if (currentIndexInPlaylist > 0) {
+        setCurrentSongIndex(playlist.songs[currentIndexInPlaylist - 1]);
+      }
+    } else {
+      // Normal previous song
+      setCurrentSongIndex((prev) => (prev - 1 + songs.length) % songs.length);
+    }
+  };
+
+  // Playlist functions
+  const createPlaylist = () => {
+    if (!newPlaylistName) return;
+    setPlaylists([...playlists, { name: newPlaylistName, songs: [] }]);
+    setNewPlaylistName('');
+  };
+
+  const deletePlaylist = (index) => {
+    const updatedPlaylists = [...playlists];
+    updatedPlaylists.splice(index, 1);
+    setPlaylists(updatedPlaylists);
+    if (currentPlaylist === index) {
+      setCurrentPlaylist(null);
+    } else if (currentPlaylist > index) {
+      setCurrentPlaylist(currentPlaylist - 1);
+    }
+  };
+
+  const addToPlaylist = (playlistIndex, songIndex) => {
+    const updatedPlaylists = [...playlists];
+    if (!updatedPlaylists[playlistIndex].songs.includes(songIndex)) {
+      updatedPlaylists[playlistIndex].songs.push(songIndex);
+      setPlaylists(updatedPlaylists);
+    }
+  };
+
+  const removeFromPlaylist = (playlistIndex, songIndex) => {
+    const updatedPlaylists = [...playlists];
+    updatedPlaylists[playlistIndex].songs = updatedPlaylists[playlistIndex].songs.filter(
+      idx => idx !== songIndex
+    );
+    setPlaylists(updatedPlaylists);
+  };
+
+  const playPlaylist = (playlistIndex) => {
+    if (playlists[playlistIndex].songs.length > 0) {
+      setCurrentPlaylist(playlistIndex);
+      setCurrentSongIndex(playlists[playlistIndex].songs[0]);
+      setIsPlaying(true);
+    }
+  };
+
+  // Queue functions
+  const addToQueue = (songIndex) => {
+    setQueue([...queue, songIndex]);
+  };
+
+  const playFromQueue = () => {
+    if (queue.length > 0) {
+      setCurrentSongIndex(queue[0]);
+      setQueue(queue.slice(1));
+      setIsPlaying(true);
+    }
+  };
+
+  const removeFromQueue = (index) => {
+    setQueue(queue.filter((_, i) => i !== index));
+  };
+
+  // Sound effects
+  const toggleEffect = (effect) => {
+    setEffects({...effects, [effect]: !effects[effect]});
+    console.log(`${effect} effect ${effects[effect] ? 'disabled' : 'enabled'}`);
+  };
+
+  // Equalizer
+  const updateEqualizer = (band, value) => {
+    setEqualizer({...equalizer, [band]: value});
+    console.log(`${band} set to ${value}`);
+  };
+
+  const formatTime = (time) => {
+    if (isNaN(time)) return "0:00";
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+  };
+
+  return (
+    <div style={{ 
+      maxWidth: 900, 
+      margin: '0 auto', 
+      padding: '24px',
+      background: `linear-gradient(135deg, ${colors.background} 0%, #DFE6E9 100%)`,
+      minHeight: '100vh',
+      fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
+    }}>
+      {/* Header with gradient */}
+      <div style={{
+        background: `linear-gradient(90deg, ${colors.primary} 0%, ${colors.secondary} 100%)`,
+        padding: '20px',
+        borderRadius: '16px',
+        marginBottom: '24px',
+        textAlign: 'center',
+        boxShadow: `0 8px 16px ${colors.primary}40`
+      }}>
+        <h1 style={{ 
+          margin: 0,
+          color: 'white',
+          fontSize: '32px',
+          fontWeight: '700',
+          textShadow: '0 2px 4px rgba(0,0,0,0.2)'
+        }}>VIBE Music Player</h1>
+        <p style={{ 
+          margin: '8px 0 0',
+          color: 'rgba(255,255,255,0.9)',
+          fontSize: '16px'
+        }}>Play your favorite tunes with style</p>
+      </div>
+      
+      {/* Main content grid */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: '24px'
+      }}>
+        {/* Left column */}
+        <div>
+          {/* Now Playing Card */}
+          <div style={{
+            ...cardStyle,
+            background: `linear-gradient(135deg, ${colors.cardBg} 0%, rgba(255,255,255,0.95) 100%)`,
+            border: 'none'
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              marginBottom: '16px'
+            }}>
+              <div style={{
+                width: '80px',
+                height: '80px',
+                borderRadius: '12px',
+                background: `linear-gradient(45deg, ${colors.primary} 0%, ${colors.accent} 100%)`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: '16px',
+                boxShadow: `0 4px 12px ${colors.primary}40`
+              }}>
+                {songs[currentSongIndex] ? (
+                  <span style={{
+                    fontSize: '36px',
+                    color: 'white'
+                  }}>🎵</span>
+                ) : (
+                  <span style={{
+                    fontSize: '36px',
+                    color: 'white'
+                  }}>🎧</span>
+                )}
+              </div>
+              <div>
+                <h2 style={{ 
+                  margin: 0,
+                  color: colors.textDark,
+                  fontSize: '20px',
+                  fontWeight: '600'
+                }}>
+                  {songs[currentSongIndex]?.title || 'No song selected'}
+                </h2>
+                <p style={{ 
+                  margin: '4px 0 0',
+                  color: colors.textLight,
+                  fontSize: '14px'
+                }}>
+                  {songs[currentSongIndex]?.artist || 'Select a song to play'}
+                </p>
+                {currentPlaylist !== null && (
+                  <div style={{
+                    display: 'inline-block',
+                    background: colors.accent,
+                    color: 'white',
+                    padding: '4px 8px',
+                    borderRadius: '20px',
+                    fontSize: '12px',
+                    marginTop: '8px'
+                  }}>
+                    {playlists[currentPlaylist]?.name}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* Progress bar */}
+            <div style={{ margin: '20px 0' }}>
+              <input
+                type="range"
+                min="0"
+                max={duration || 0}
+                value={currentTime}
+                onChange={(e) => {
+                  audioRef.current.currentTime = e.target.value;
+                  setCurrentTime(e.target.value);
+                }}
+                style={{ 
+                  width: '100%',
+                  height: '8px',
+                  borderRadius: '10px',
+                  background: `linear-gradient(90deg, ${colors.primary} 0%, ${colors.secondary} 100%)`,
+                  outline: 'none',
+                  cursor: 'pointer',
+                  appearance: 'none',
+                  '::-webkit-slider-thumb': {
+                    appearance: 'none',
+                    width: '18px',
+                    height: '18px',
+                    borderRadius: '50%',
+                    background: colors.accent,
+                    cursor: 'pointer'
+                  }
+                }}
+              />
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between',
+                color: colors.textLight,
+                fontSize: '14px',
+                marginTop: '8px'
+              }}>
+                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(duration)}</span>
+              </div>
+            </div>
+            
+            {/* Player controls */}
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'center', 
+              gap: '12px',
+              marginBottom: '20px',
+              flexWrap: 'wrap'
+            }}>
+              <button 
+                onClick={handlePrevious}
+                style={buttonStyle(false, colors.secondary)}
+              >
+                ⏮ Previous
+              </button>
+              <button 
+                onClick={handlePlayPause}
+                style={{
+                  ...buttonStyle(isPlaying, isPlaying ? colors.accent : colors.primary),
+                  padding: '14px 28px',
+                  fontSize: '16px'
+                }}
+              >
+                {isPlaying ? '⏸ Pause' : '▶ Play'}
+              </button>
+              <button 
+                onClick={handleNext}
+                style={buttonStyle(false, colors.secondary)}
+              >
+                Next ⏭
+              </button>
+            </div>
+            
+            {/* Volume and auto-play */}
+            <div style={{ 
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '16px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+                <span style={{ 
+                  marginRight: '10px',
+                  color: colors.textLight,
+                  minWidth: '70px'
+                }}>
+                  🔈 Volume
+                </span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={volume}
+                  onChange={(e) => {
+                    setVolume(e.target.value);
+                    audioRef.current.volume = e.target.value;
+                  }}
+                  style={{
+                    flex: 1,
+                    height: '8px',
+                    borderRadius: '10px',
+                    background: `linear-gradient(90deg, ${colors.primary} 0%, ${colors.secondary} 100%)`,
+                    outline: 'none',
+                    cursor: 'pointer',
+                    appearance: 'none',
+                    '::-webkit-slider-thumb': {
+                      appearance: 'none',
+                      width: '18px',
+                      height: '18px',
+                      borderRadius: '50%',
+                      background: colors.accent,
+                      cursor: 'pointer'
+                    }
+                  }}
+                />
+              </div>
+              
+              <button 
+                onClick={() => setAutoPlay(!autoPlay)}
+                style={{
+                  ...buttonStyle(autoPlay, autoPlay ? colors.accent : colors.primary),
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+              >
+                {autoPlay ? '🔁 Auto ON' : '🔁 Auto OFF'}
+              </button>
+            </div>
+          </div>
+
+          {/* Playlists Card */}
+          <div style={cardStyle}>
+            <h2 style={{ 
+              marginTop: 0,
+              color: colors.textDark,
+              fontSize: '20px',
+              display: 'flex',
+              alignItems: 'center'
+            }}>
+              <span style={{ marginRight: '10px' }}>📋</span> Your Playlists
+            </h2>
+            
+            {/* Create playlist */}
+            <div style={{ 
+              display: 'flex', 
+              gap: '12px', 
+              marginBottom: '20px',
+              alignItems: 'center'
+            }}>
+              <input
+                type="text"
+                value={newPlaylistName}
+                onChange={(e) => setNewPlaylistName(e.target.value)}
+                placeholder="New playlist name"
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: '12px',
+                  border: `1px solid ${colors.primary}20`,
+                  flex: 1,
+                  fontSize: '14px',
+                  outline: 'none',
+                  background: 'rgba(255,255,255,0.7)',
+                  '::placeholder': {
+                    color: colors.textLight
+                  }
+                }}
+              />
+              <button 
+                onClick={createPlaylist}
+                style={buttonStyle(false, colors.secondary)}
+              >
+                Create
+              </button>
+            </div>
+            
+            {/* Playlists list */}
+            <div style={{ 
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+              gap: '12px'
+            }}>
+              {playlists.map((playlist, pIndex) => (
+                <div key={pIndex} style={{ 
+                  padding: '16px',
+                  borderRadius: '12px',
+                  background: currentPlaylist === pIndex 
+                    ? `${colors.primary}20` 
+                    : 'rgba(255,255,255,0.7)',
+                  border: `1px solid ${colors.primary}20`,
+                  transition: 'all 0.3s',
+                  ':hover': {
+                    transform: 'translateY(-2px)',
+                    boxShadow: `0 6px 12px ${colors.primary}20`
+                  }
+                }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '12px'
+                  }}>
+                    <h3 style={{ 
+                      margin: 0,
+                      color: colors.textDark,
+                      fontSize: '16px',
+                      fontWeight: '600'
+                    }}>
+                      {playlist.name}
+                    </h3>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        onClick={() => playPlaylist(pIndex)}
+                        style={{
+                          background: colors.primary,
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '8px',
+                          padding: '6px 10px',
+                          cursor: 'pointer',
+                          fontSize: '12px'
+                        }}
+                      >
+                        Play
+                      </button>
+                      <button
+                        onClick={() => deletePlaylist(pIndex)}
+                        style={{
+                          background: colors.accent,
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '8px',
+                          padding: '6px 10px',
+                          cursor: 'pointer',
+                          fontSize: '12px'
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '12px'
+                  }}>
+                    <span style={{ 
+                      color: colors.textLight,
+                      fontSize: '14px'
+                    }}>
+                      {playlist.songs.length} songs
+                    </span>
+                    <button 
+                      onClick={() => setShowPlaylistSongs(showPlaylistSongs === pIndex ? null : pIndex)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: colors.primary,
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        textDecoration: 'underline'
+                      }}
+                    >
+                      {showPlaylistSongs === pIndex ? 'Hide songs' : 'Show songs'}
+                    </button>
+                  </div>
+                  
+                  {showPlaylistSongs === pIndex && (
+                    <div style={{ 
+                      maxHeight: '200px',
+                      overflowY: 'auto',
+                      marginTop: '12px',
+                      borderTop: `1px solid ${colors.primary}20`,
+                      paddingTop: '12px'
+                    }}>
+                      {playlist.songs.length > 0 ? (
+                        <ul style={{ 
+                          listStyle: 'none', 
+                          padding: 0,
+                          margin: 0
+                        }}>
+                          {playlist.songs.map((songIdx, idx) => (
+                            <li 
+                              key={idx}
+                              style={{
+                                padding: '8px 0',
+                                borderBottom: `1px solid ${colors.primary}10`,
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
+                              }}
+                            >
+                              <span style={{ 
+                                fontSize: '14px',
+                                color: colors.textDark,
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                maxWidth: '120px'
+                              }}>
+                                {songs[songIdx]?.title || 'Unknown'}
+                              </span>
+                              <button
+                                onClick={() => removeFromPlaylist(pIndex, songIdx)}
+                                style={{ 
+                                  background: colors.accent,
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '6px',
+                                  padding: '4px 8px',
+                                  cursor: 'pointer',
+                                  fontSize: '12px'
+                                }}
+                              >
+                                Remove
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p style={{ 
+                          color: colors.textLight, 
+                          fontSize: '14px',
+                          textAlign: 'center'
+                        }}>
+                          No songs in this playlist
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right column */}
+        <div>
+          {/* Queue Card */}
+          <div style={cardStyle}>
+            <h2 style={{ 
+              marginTop: 0,
+              color: colors.textDark,
+              fontSize: '20px',
+              display: 'flex',
+              alignItems: 'center'
+            }}>
+              <span style={{ marginRight: '10px' }}>⏭</span> Up Next ({queue.length})
+            </h2>
+            
+            {queue.length > 0 ? (
+              <ul style={{ 
+                listStyle: 'none', 
+                padding: 0,
+                maxHeight: '300px',
+                overflowY: 'auto'
+              }}>
+                {queue.map((songIndex, qIndex) => (
+                  <li 
+                    key={qIndex}
+                    style={{
+                      padding: '12px 16px',
+                      marginBottom: '8px',
+                      background: 'rgba(255,255,255,0.7)',
+                      borderRadius: '12px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      transition: 'all 0.3s',
+                      ':hover': {
+                        transform: 'translateX(4px)',
+                        boxShadow: `0 4px 8px ${colors.primary}20`
+                      }
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <div style={{ 
+                        color: colors.textDark,
+                        fontWeight: '500',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}>
+                        {songs[songIndex]?.title || 'Unknown'}
+                      </div>
+                      <div style={{ 
+                        color: colors.textLight,
+                        fontSize: '14px',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}>
+                        {songs[songIndex]?.artist || 'Unknown artist'}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => removeFromQueue(qIndex)}
+                      style={{ 
+                        background: colors.accent,
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '8px 12px',
+                        cursor: 'pointer',
+                        marginLeft: '12px',
+                        flexShrink: 0
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div style={{ 
+                padding: '20px',
+                textAlign: 'center',
+                color: colors.textLight
+              }}>
+                <p style={{ margin: 0 }}>Your queue is empty</p>
+                <p style={{ margin: '8px 0 0', fontSize: '14px' }}>
+                  Add songs from the library below
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Audio Effects Card */}
+          <div style={cardStyle}>
+            <h2 style={{ 
+              marginTop: 0,
+              color: colors.textDark,
+              fontSize: '20px',
+              display: 'flex',
+              alignItems: 'center'
+            }}>
+              <span style={{ marginRight: '10px' }}>🎛️</span> Audio Effects
+            </h2>
+            
+            <div style={{ marginBottom: '24px' }}>
+              <h3 style={{ 
+                color: colors.textDark,
+                fontSize: '16px',
+                marginBottom: '12px'
+              }}>
+                Sound Effects
+              </h3>
+              <div style={{ 
+                display: 'flex', 
+                gap: '12px',
+                flexWrap: 'wrap'
+              }}>
+                <button 
+                  onClick={() => toggleEffect('reverb')}
+                  style={buttonStyle(effects.reverb, effects.reverb ? colors.primary : colors.secondary)}
+                >
+                  Reverb {effects.reverb ? '✅' : '❌'}
+                </button>
+                <button 
+                  onClick={() => toggleEffect('delay')}
+                  style={buttonStyle(effects.delay, effects.delay ? colors.primary : colors.secondary)}
+                >
+                  Delay {effects.delay ? '✅' : '❌'}
+                </button>
+                <button 
+                  onClick={() => toggleEffect('distortion')}
+                  style={buttonStyle(effects.distortion, effects.distortion ? colors.primary : colors.secondary)}
+                >
+                  Distortion {effects.distortion ? '✅' : '❌'}
+                </button>
+              </div>
+            </div>
+            
+            <div>
+              <h3 style={{ 
+                color: colors.textDark,
+                fontSize: '16px',
+                marginBottom: '16px'
+              }}>
+                Equalizer
+              </h3>
+              <div style={{ 
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr 1fr',
+                gap: '20px'
+              }}>
+                <div>
+                  <label style={{ 
+                    display: 'block', 
+                    color: colors.textLight,
+                    marginBottom: '8px',
+                    fontSize: '14px'
+                  }}>
+                    Bass
+                  </label>
+                  <input
+                    type="range"
+                    min="-10"
+                    max="10"
+                    value={equalizer.bass}
+                    onChange={(e) => updateEqualizer('bass', e.target.value)}
+                    style={{
+                      width: '100%',
+                      height: '8px',
+                      borderRadius: '10px',
+                      background: `linear-gradient(90deg, ${colors.primary} 0%, ${colors.secondary} 100%)`,
+                      outline: 'none',
+                      cursor: 'pointer',
+                      appearance: 'none',
+                      '::-webkit-slider-thumb': {
+                        appearance: 'none',
+                        width: '18px',
+                        height: '18px',
+                        borderRadius: '50%',
+                        background: colors.accent,
+                        cursor: 'pointer'
+                      }
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ 
+                    display: 'block', 
+                    color: colors.textLight,
+                    marginBottom: '8px',
+                    fontSize: '14px'
+                  }}>
+                    Mid
+                  </label>
+                  <input
+                    type="range"
+                    min="-10"
+                    max="10"
+                    value={equalizer.mid}
+                    onChange={(e) => updateEqualizer('mid', e.target.value)}
+                    style={{
+                      width: '100%',
+                      height: '8px',
+                      borderRadius: '10px',
+                      background: `linear-gradient(90deg, ${colors.primary} 0%, ${colors.secondary} 100%)`,
+                      outline: 'none',
+                      cursor: 'pointer',
+                      appearance: 'none',
+                      '::-webkit-slider-thumb': {
+                        appearance: 'none',
+                        width: '18px',
+                        height: '18px',
+                        borderRadius: '50%',
+                        background: colors.accent,
+                        cursor: 'pointer'
+                      }
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ 
+                    display: 'block', 
+                    color: colors.textLight,
+                    marginBottom: '8px',
+                    fontSize: '14px'
+                  }}>
+                    Treble
+                  </label>
+                  <input
+                    type="range"
+                    min="-10"
+                    max="10"
+                    value={equalizer.treble}
+                    onChange={(e) => updateEqualizer('treble', e.target.value)}
+                    style={{
+                      width: '100%',
+                      height: '8px',
+                      borderRadius: '10px',
+                      background: `linear-gradient(90deg, ${colors.primary} 0%, ${colors.secondary} 100%)`,
+                      outline: 'none',
+                      cursor: 'pointer',
+                      appearance: 'none',
+                      '::-webkit-slider-thumb': {
+                        appearance: 'none',
+                        width: '18px',
+                        height: '18px',
+                        borderRadius: '50%',
+                        background: colors.accent,
+                        cursor: 'pointer'
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Library Card */}
+          <div style={cardStyle}>
+            <h2 style={{ 
+              marginTop: 0,
+              color: colors.textDark,
+              fontSize: '20px',
+              display: 'flex',
+              alignItems: 'center'
+            }}>
+              <span style={{ marginRight: '10px' }}>🎵</span> Music Library
+            </h2>
+            
+            <input
+              type="file"
+              accept="audio/*"
+              multiple
+              onChange={(e) => {
+                const files = Array.from(e.target.files).map(file => ({
+                  title: file.name.replace(/\.[^/.]+$/, ""),
+                  artist: "Unknown",
+                  url: URL.createObjectURL(file)
+                }));
+                setSongs([...songs, ...files]);
+              }}
+              ref={fileInputRef}
+              style={{ display: 'none' }}
+            />
+            <button 
+              onClick={() => fileInputRef.current.click()}
+              style={buttonStyle(false, colors.primary)}
+            >
+              ＋ Add Songs
+            </button>
+            
+            <div style={{ 
+              maxHeight: '400px',
+              overflowY: 'auto',
+              marginTop: '16px'
+            }}>
+              {songs.length > 0 ? (
+                <ul style={{ 
+                  listStyle: 'none', 
+                  padding: 0,
+                  margin: 0
+                }}>
+                  {songs.map((song, index) => (
+                    <li 
+                      key={index} 
+                      style={{ 
+                        padding: '12px 16px',
+                        marginBottom: '8px',
+                        background: currentSongIndex === index 
+                          ? `${colors.primary}20` 
+                          : 'rgba(255,255,255,0.7)',
+                        borderRadius: '12px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        transition: 'all 0.3s',
+                        ':hover': {
+                          transform: 'translateX(4px)',
+                          boxShadow: `0 4px 8px ${colors.primary}20`
+                        }
+                      }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <div style={{ 
+                          color: colors.textDark,
+                          fontWeight: '500',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        }}>
+                          {song.title}
+                        </div>
+                        <div style={{ 
+                          color: colors.textLight,
+                          fontSize: '14px',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        }}>
+                          {song.artist}
+                        </div>
+                      </div>
+                      
+                      <div style={{ 
+                        display: 'flex',
+                        gap: '8px',
+                        flexShrink: 0
+                      }}>
+                        {playlists.length > 0 && (
+                          <select 
+                            onChange={(e) => addToPlaylist(e.target.value, index)}
+                            defaultValue=""
+                            style={{
+                              padding: '8px 12px',
+                              borderRadius: '8px',
+                              border: `1px solid ${colors.primary}20`,
+                              background: 'rgba(255,255,255,0.8)',
+                              color: colors.textDark,
+                              fontSize: '12px',
+                              outline: 'none',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <option value="" disabled>Add to...</option>
+                            {playlists.map((playlist, pIndex) => (
+                              <option key={pIndex} value={pIndex}>
+                                {playlist.name}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        
+                        <button 
+                          onClick={() => addToQueue(index)}
+                          style={{
+                            background: colors.secondary,
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '8px 12px',
+                            cursor: 'pointer',
+                            fontSize: '12px'
+                          }}
+                        >
+                          Queue
+                        </button>
+                        
+                        <button 
+                          onClick={() => {
+                            setCurrentSongIndex(index);
+                            setIsPlaying(true);
+                            setCurrentPlaylist(null);
+                          }}
+                          style={{
+                            background: colors.primary,
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '8px 12px',
+                            cursor: 'pointer',
+                            fontSize: '12px'
+                          }}
+                        >
+                          Play
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div style={{ 
+                  padding: '40px 20px',
+                  textAlign: 'center',
+                  color: colors.textLight
+                }}>
+                  <p style={{ margin: 0, fontSize: '16px' }}>Your library is empty</p>
+                  <p style={{ margin: '8px 0 0' }}>
+                    Click "Add Songs" to upload your music
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default MusicPlayer;
