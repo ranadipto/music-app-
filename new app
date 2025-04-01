@@ -1,0 +1,246 @@
+Main Code : 
+
+
+import React, { useState, useRef } from "react";
+import "./MusicPlayer.css";
+
+function MusicPlayer() {
+  const [songs, setSongs] = useState([]);
+  const [queue, setQueue] = useState([]);
+  const [currentSongIndex, setCurrentSongIndex] = useState(null);
+  const [effects, setEffects] = useState({ reverb: false, delay: false, distortion: false });
+  const [equalizer, setEqualizer] = useState({ bass: 0, mid: 0, treble: 0 });
+  const fileInputRef = useRef(null);
+
+  const addToQueue = (index) => setQueue([...queue, index]);
+  const removeFromQueue = (index) => setQueue(queue.filter((_, i) => i !== index));
+  
+  const toggleEffect = (effect) => {
+    setEffects({ ...effects, [effect]: !effects[effect] });
+  };
+
+  const updateEqualizer = (band, value) => {
+    setEqualizer({ ...equalizer, [band]: parseInt(value, 10) });
+  };
+
+  const applyPreset = (preset) => {
+    const presets = {
+      rock: { bass: 6, mid: 2, treble: 5 },
+      pop: { bass: 4, mid: 6, treble: 3 },
+      jazz: { bass: 3, mid: 5, treble: 7 },
+    };
+    setEqualizer(presets[preset]);
+  };
+
+  return (
+    <div className="music-player">
+      <div className="library">
+        <h2>Music Library</h2>
+        <input
+          type="file"
+          accept="audio/*"
+          multiple
+          onChange={(e) => {
+            const files = Array.from(e.target.files).map((file) => ({
+              title: file.name.replace(/\.[^/.]+$/, ""),
+              artist: "Unknown",
+              url: URL.createObjectURL(file),
+            }));
+            setSongs([...songs, ...files]);
+          }}
+          ref={fileInputRef}
+          className="hidden-input"
+        />
+        <button onClick={() => fileInputRef.current.click()} className="add-button">
+          ＋ Add Songs
+        </button>
+
+        <ul>
+          {songs.map((song, index) => (
+            <li key={index} className="song-item">
+              <span>{song.title}</span>
+              <button onClick={() => addToQueue(index)} className="queue-button">Queue</button>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="queue">
+        <h2>Up Next ({queue.length})</h2>
+        <ul>
+          {queue.map((index, qIndex) => (
+            <li key={qIndex} className="queue-item">
+              <span>{songs[index]?.title || "Unknown"}</span>
+              <button onClick={() => removeFromQueue(qIndex)} className="remove-button">Remove</button>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="effects">
+        <h2>Audio Effects</h2>
+        <div className="effects-buttons">
+          {["reverb", "delay", "distortion"].map((effect) => (
+            <button key={effect} onClick={() => toggleEffect(effect)} className={`effect-button ${effects[effect] ? "active" : ""}`}>
+              {effect.charAt(0).toUpperCase() + effect.slice(1)} {effects[effect] ? "✅" : "❌"}
+            </button>
+          ))}
+        </div>
+
+        <h3>Equalizer</h3>
+        <div className="equalizer">
+          {["bass", "mid", "treble"].map((band) => (
+            <div key={band} className="equalizer-slider">
+              <label>{band.charAt(0).toUpperCase() + band.slice(1)}</label>
+              <input
+                type="range"
+                min="-10"
+                max="10"
+                value={equalizer[band]}
+                onChange={(e) => updateEqualizer(band, e.target.value)}
+              />
+            </div>
+          ))}
+        </div>
+
+        <h3>Presets</h3>
+        <div className="presets">
+          {["rock", "pop", "jazz"].map((preset) => (
+            <button key={preset} onClick={() => applyPreset(preset)} className="preset-button">
+              {preset.charAt(0).toUpperCase() + preset.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default MusicPlayer;
+
+
+
+
+
+
+
+
+
+
+
+css styling: 
+
+
+.music-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  font-family: Arial, sans-serif;
+}
+
+.library, .queue, .effects {
+  width: 300px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  background-color: #f9f9f9;
+}
+
+.hidden-input {
+  display: none;
+}
+
+.add-button {
+  padding: 8px 12px;
+  margin-top: 10px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  cursor: pointer;
+  border-radius: 5px;
+}
+
+.add-button:hover {
+  background-color: #45a049;
+}
+
+.queue-item, .song-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px;
+  border-bottom: 1px solid #ddd;
+}
+
+.queue-button, .remove-button {
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  padding: 5px;
+  cursor: pointer;
+  border-radius: 5px;
+}
+
+.remove-button {
+  background-color: #f44336;
+}
+
+.remove-button:hover {
+  background-color: #d32f2f;
+}
+
+.effects-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.effect-button {
+  background-color: #ddd;
+  border: none;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 5px;
+}
+
+.effect-button.active {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.equalizer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.equalizer-slider {
+  display: flex;
+  flex-direction: column;
+}
+
+.equalizer-slider label {
+  font-size: 14px;
+  margin-bottom: 5px;
+}
+
+.presets {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.preset-button {
+  background-color: #FFA500;
+  border: none;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 5px;
+}
+
+.preset-button:hover {
+  background-color: #FF8C00;
+}
+
+
